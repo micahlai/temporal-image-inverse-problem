@@ -1,0 +1,3 @@
+python main.py data/pure_conv/dataset.npz --all-priors true --lambda-spatial -7 --lambda-temporal -7 --num-iters 250 --output-dir results/pure_conv_lo-lambda
+# python main.py data/smol_noise/dataset.npz --spatial-prior tv --temporal-prior tv --lambda-spatial -6 --lambda-temporal -6 --num-iters 250 --output-dir results/pure_conv_smol_noise_tv
+# python main.py data/waveprop/dataset.npz ---all-priors true --lambda-spatial -5 --lambda-temporal -5 --num-iters 250 --output-dir results/noise-tv

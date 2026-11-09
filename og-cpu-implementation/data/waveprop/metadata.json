@@ -1,0 +1,49 @@
+{
+  "forward_model": "prep2_waveprop_cmos",
+  "upstream_url": "https://github.com/ebezzam/waveprop/blob/84c3e7dd50c7193e4c069a7581740ecbf33a3167/waveprop/simulation.py",
+  "upstream_commit": "84c3e7dd50c7193e4c069a7581740ecbf33a3167",
+  "upstream_license": "MIT",
+  "implementation": "adapted waveprop NumPy convolution stage; local field and CMOS extensions",
+  "source_video": "/Users/micahlai/code/cs4660-labs/lab8_temporal/data/bloom.mp4",
+  "source_psf": "/Users/micahlai/code/cs4660-labs/lab8_temporal/data/psf.tiff",
+  "source_size": [
+    1080,
+    1920
+  ],
+  "target_size": [
+    120,
+    160
+  ],
+  "psf_scale": 1.0,
+  "fps": 29.97,
+  "frames": 88,
+  "layout": "H,W,C,T",
+  "boundary": "zero",
+  "psf_origin": "kh//2,kw//2",
+  "input_gamma": 1.0,
+  "vignetting": 0.1,
+  "distortion_k1": 0.0,
+  "noise_seed": 42,
+  "sensor": {
+    "peak_electrons": 2000,
+    "read_noise": 3,
+    "dark_electrons": 0.2,
+    "full_well": 10000,
+    "bit_depth": 12,
+    "black_level": 64,
+    "prnu": 0.01,
+    "dsnu": 0.5,
+    "noise_std": 0.0
+  },
+  "diagnostics": {
+    "full_well_saturated_fraction": 0.0,
+    "adc_clipped_fraction": 0.0,
+    "sensor_rmse": 0.01346286501933189,
+    "gain_dn_per_electron": 0.4031
+  },
+  "calibrated": false,
+  "inverse_model_exact": false,
+  "measurement_units": "(ADC minus black level)/gain, minus mean dark, divided by peak_electrons",
+  "inverse_model_note": "main.py uses nominal convolution; it does not invert field effects, saturation, or fixed-pattern noise",
+  "preview": "clipped [0,1], no per-frame normalization, no audio; input_gamma undone for display"
+}

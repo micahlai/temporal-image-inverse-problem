@@ -1,0 +1,23 @@
+{
+  "source_video": "/Users/micahlai/code/cs4660-labs/lab8_temporal/data/bloom.mp4",
+  "source_psf": "/Users/micahlai/code/cs4660-labs/lab8_temporal/data/psf.tiff",
+  "source_size": [
+    1080,
+    1920
+  ],
+  "target_size": [
+    120,
+    160
+  ],
+  "psf_scale": 1.0,
+  "fps": 29.97,
+  "frames": 88,
+  "layout": "H,W,C,T",
+  "boundary": "zero",
+  "psf_origin": "kh//2,kw//2",
+  "convolution": "spatial only, shared unit-sum PSF",
+  "noise_model": "additive independent zero-mean Gaussian",
+  "noise_std": 0.001,
+  "noise_seed": 42,
+  "preview": "lossy clipped RGB MP4; no audio"
+}
