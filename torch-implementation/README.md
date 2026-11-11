@@ -82,7 +82,8 @@ in its own subdirectory and write `loss_all_priors.png`.
 With `--all-priors true`, the output directory also contains:
 
 - `loss_all_priors.csv`: one row per iteration per combination, with spatial
-  and temporal priors, iteration, data loss, inner proximal iteration count,
+  and temporal priors and weights, iteration, data loss, reconstructed MSE and
+  PSNR in dB, inner proximal iteration count,
   primal-dual gap, and convergence flag. These are the original loss values,
   including zero, before the log plot masks them.
 - `metrics_all_priors.csv`: one row per combination, including all fields from
@@ -116,6 +117,85 @@ Both blurred and reconstructed PSNR are printed and recorded in `metrics.json`,
 including single-prior runs. An exact match has `"Infinity"` PSNR in JSON/CSV.
 Without ground truth, MSE/PSNR are `null` in JSON and empty in CSV. CSV export
 covers histories and metrics; full reconstruction arrays remain in `.npy`.
+
+Each run also saves `iteration_metrics.csv` and `psnr_history.npy`, including
+single-prior runs. PSNR is evaluated after every completed FISTA update using
+the current unclipped video and the selected reference. Computation stays on
+the selected device; only a scalar is transferred each iteration. No iterates
+are retained and evaluation does not affect optimization. GPU histories use
+the solver's precision; final summary metrics use float64 evaluation, so tiny
+rounding differences are possible. Without ground truth, CSV quality fields
+are empty and the PSNR array contains NaNs.
+
+## Weight sweep: 100 runs
+
+`sweep_weights.py` defaults to the existing
+`og-cpu-implementation/data/smol_noise/dataset.npz`. It uses the same measurement
+and ground truth for every run. Each of the four spatial/temporal prior pairs
+runs all 25 combinations of exponents `-7, -6, -5, -4, -3`, independently for
+each weight, for **250 iterations**: 100 runs and 25,000 iteration rows total.
+Every run starts from zero; settings and the joint reconstruction method are
+unchanged. Runs execute sequentially to limit memory use.
+
+From the repository root:
+
+```sh
+conda activate temporal-torch
+python torch-implementation/sweep_weights.py
+```
+
+Or without activating the environment:
+
+```sh
+conda run --no-capture-output -n temporal-torch python torch-implementation/sweep_weights.py
+```
+
+All results go into **one flat directory**,
+`torch-implementation/results/smol_noise_sweep/`:
+
+- `sweep_iterations.csv`: 25,000 rows, containing run ID, prior pair, both
+  exponents and absolute weights, settings, iteration, data loss, reconstructed
+  MSE/PSNR, and proximal diagnostics. `reconstructed_mse` and
+  `reconstructed_psnr_db` are for that row's iteration; `final_data_loss` is the
+  completed run's final loss.
+- `sweep_summary.csv`: 100 rows of final scores and run settings.
+
+The sweep writes only CSVs, avoiding 100 large video/array exports. Both CSVs
+are replaced atomically after each completed run, preserving completed runs
+if interrupted. They are separate checkpoints, so an interruption between
+the two writes may leave the summary one run behind. The next invocation
+refuses to overwrite existing CSVs; use a new output directory to rerun.
+Automatic resume is not implemented. An interrupted current run is not saved.
+
+Optional arguments include a positional dataset path (or directory), `--gt`,
+`--output-dir`, `--device`, `--dtype`, `--prox-iters`, `--prox-tol`, `--wavelet`,
+and `--wavelet-level`. `--num-iters` overrides 250 for shorter experiments.
+Ground truth is required for the sweep. Defaults are independent of your
+current working directory.
+
+## Plot the four heatmaps
+
+After the sweep completes:
+
+```sh
+conda run --no-capture-output -n temporal-torch python torch-implementation/plot_sweep_heatmaps.py \
+  torch-implementation/results/smol_noise_sweep/sweep_iterations.csv
+```
+
+This saves **one PNG with a 2×2 grid of heatmaps** beside the CSV:
+`psnr_all_priors_iter_250.png` (the filename reflects the selected iteration).
+Each panel shows one prior pair. The x-axis
+is spatial weight, y-axis is temporal weight, and color/annotations show PSNR
+in dB at iteration 250 (the final iteration by default). All four share the
+same color scale and one shared colorbar. Exact-match infinity is labeled `∞`
+and colored pink. Previously generated separate images are left untouched;
+new runs save only the combined image.
+
+Add `--iteration 100` to inspect the scores at iteration 100, or `--output-dir`
+to save plots elsewhere. `sweep_summary.csv` also works for final-iteration
+plots. Missing cells, duplicate cells, and mixed run lengths are rejected to
+avoid silently producing a misleading comparison. The heatmaps use the chosen
+iteration's PSNR, not the highest PSNR observed during a run.
 
 ## Preserved method
 

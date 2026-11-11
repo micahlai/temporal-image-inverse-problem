@@ -84,6 +84,10 @@ def test_cli_all_priors_and_explicit_false(tmp_path):
         np.testing.assert_array_equal([float(row["data_loss"]) for row in rows], np.load(folder / "data_losses.npy"))
         assert all(int(row["prox_iterations"]) > 0 and float(row["prox_gap"]) >= 0 for row in rows)
         assert all(row["prox_converged"] in ("True", "False") for row in rows)
+        assert all(np.isfinite(float(row["reconstructed_psnr_db"])) for row in rows)
+        assert float(rows[-1]["reconstructed_psnr_db"]) == pytest.approx(metrics["reconstructed_psnr_db"])
+        np.testing.assert_array_equal(np.load(folder / "psnr_history.npy"),
+                                      [float(row["reconstructed_psnr_db"]) for row in rows])
         assert np.load(folder / "data_losses.npy").shape == (4,)
         assert np.load(folder / "reconstructed.npy").shape == measurement.shape
         assert (folder / "reconstructed.mp4").stat().st_size > 0
@@ -96,6 +100,7 @@ def test_cli_all_priors_and_explicit_false(tmp_path):
     assert metrics["ground_truth"] == f"{dataset.resolve()}::reference"
     assert metrics["blurred_mse"] == 0
     assert metrics["blurred_psnr_db"] == "Infinity"
+    assert (single / "iteration_metrics.csv").exists()
     # Ground-truth selection only affects evaluation, never reconstruction.
     assert not list(single.glob("spatial_*"))
     assert not (single / "loss_all_priors.png").exists()
@@ -123,6 +128,9 @@ def test_real_mp4_cli_on_available_device(tmp_path):
     assert metrics["device"].startswith(device)
     assert metrics["lambda_spatial"] == metrics["lambda_temporal"] == 1e-5
     assert metrics["reconstructed_psnr_db"] is None
+    with (output / "iteration_metrics.csv").open() as stream:
+        rows = list(csv.DictReader(stream))
+    assert len(rows) == 2 and all(row["reconstructed_psnr_db"] == "" for row in rows)
     assert (output / "reconstructed.mp4").stat().st_size > 0
 
 

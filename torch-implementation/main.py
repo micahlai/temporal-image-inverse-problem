@@ -136,7 +136,7 @@ def plot_prior_losses(curves):
 
 
 def run_reconstruction(args, measurement, psf, fps, reference,
-                       spatial_prior, temporal_prior, output_dir):
+                       spatial_prior, temporal_prior, output_dir, *, save_artifacts=True):
     """Run one configuration and return its loss history and metric records."""
     solver = InverseSolver(psf, num_iters=args.num_iters,
                            lam_spatial=args.lambda_spatial, lam_temporal=args.lambda_temporal,
@@ -151,15 +151,30 @@ def run_reconstruction(args, measurement, psf, fps, reference,
     if not np.isclose(lhs, rhs, rtol=adjoint_tol, atol=adjoint_tol):
         raise RuntimeError(f"Adjoint test failed: {lhs} != {rhs}")
 
-    def progress(iteration, loss):
-        if iteration == 1 or iteration % 10 == 0 or iteration == args.num_iters:
-            print(f"[{spatial_prior}/{temporal_prior}] FISTA {iteration}/{args.num_iters}: data loss {loss:.6g}", flush=True)
+    reference_tensor = (torch.as_tensor(reference, device=solver.device, dtype=solver.dtype)
+                        if reference is not None else None)
+    quality_history = []
 
-    result = solver(measurement, callback=progress).cpu().numpy()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    np.save(output_dir / "reconstructed.npy", result)
-    np.save(output_dir / "data_losses.npy", solver.losses)
-    write_video(output_dir / "reconstructed.mp4", result, fps)
+    def progress(iteration, loss, estimate):
+        mse, psnr = None, None
+        if reference_tensor is not None:
+            # Evaluate on device; only one scalar crosses to the host. Never
+            # retain iterates or transfer the full video at each iteration.
+            mse = (estimate - reference_tensor).square().mean().item()
+            psnr = "Infinity" if mse == 0 else float(-10 * np.log10(mse))
+        quality_history.append((mse, psnr))
+        if iteration == 1 or iteration % 10 == 0 or iteration == args.num_iters:
+            quality = f", PSNR {float(psnr):.6g} dB" if psnr is not None else ""
+            print(f"[{spatial_prior}/{temporal_prior}] FISTA {iteration}/{args.num_iters}: data loss {loss:.6g}{quality}", flush=True)
+
+    result = solver(measurement, iterate_callback=progress).cpu().numpy()
+    if save_artifacts:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        np.save(output_dir / "reconstructed.npy", result)
+        np.save(output_dir / "data_losses.npy", solver.losses)
+        np.save(output_dir / "psnr_history.npy",
+                [float(psnr) if psnr is not None else np.nan for _, psnr in quality_history])
+        write_video(output_dir / "reconstructed.mp4", result, fps)
     report = dict(input=str(args.input.resolve()), shape=list(result.shape), fps=fps,
                   spatial_prior=spatial_prior, temporal_prior=temporal_prior,
                   lambda_spatial=args.lambda_spatial, lambda_temporal=args.lambda_temporal,
@@ -181,13 +196,19 @@ def run_reconstruction(args, measurement, psf, fps, reference,
         print(f"MSE: blurred={report['blurred_mse']:.6g}, reconstructed={report['reconstructed_mse']:.6g}")
         print(f"PSNR: blurred={float(report['blurred_psnr_db']):.6g} dB, "
               f"reconstructed={float(report['reconstructed_psnr_db']):.6g} dB")
-    (output_dir / "metrics.json").write_text(json.dumps(report, indent=2) + "\n")
-    print(f"Saved reconstruction: {output_dir / 'reconstructed.mp4'}")
+    if save_artifacts:
+        (output_dir / "metrics.json").write_text(json.dumps(report, indent=2) + "\n")
+        print(f"Saved reconstruction: {output_dir / 'reconstructed.mp4'}")
     iterations = [dict(spatial_prior=spatial_prior, temporal_prior=temporal_prior,
                        iteration=index, data_loss=loss,
+                       lambda_spatial=args.lambda_spatial, lambda_temporal=args.lambda_temporal,
+                       reconstructed_mse=quality_history[index - 1][0],
+                       reconstructed_psnr_db=quality_history[index - 1][1],
                        prox_iterations=info["iterations"], prox_gap=info["gap"],
                        prox_converged=info["converged"])
                   for index, (loss, info) in enumerate(zip(solver.losses, solver.prox_diagnostics), start=1)]
+    if save_artifacts:
+        write_csv(output_dir / "iteration_metrics.csv", iterations)
     return np.asarray(solver.losses), report, iterations
 
 

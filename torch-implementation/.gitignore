@@ -1,4 +1,5 @@
 /prepared/
 /prepared2/
 /reconstructed/
-/results/
+/results/*
+!/results/smol_noise_sweep

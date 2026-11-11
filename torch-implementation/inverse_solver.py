@@ -97,8 +97,13 @@ class InverseSolver:
         return result
 
     @torch.no_grad()
-    def __call__(self, y, callback=None):
-        """Reconstruct all frames jointly; callback(iteration, data_loss)."""
+    def __call__(self, y, callback=None, *, iterate_callback=None):
+        """Reconstruct jointly; optionally observe each completed iterate.
+
+        callback(iteration, data_loss) retains its existing interface.
+        iterate_callback(iteration, data_loss, x) may read x for evaluation;
+        it must not mutate the device tensor. Evaluation never feeds updates.
+        """
         y = self._prepare(y)
         x = torch.zeros_like(y)
         v = x.clone()
@@ -116,6 +121,8 @@ class InverseSolver:
             self.losses.append((0.5 * (self._forward(x) - y).square().sum()).item())
             if callback is not None:
                 callback(iteration + 1, self.losses[-1])
+            if iterate_callback is not None:
+                iterate_callback(iteration + 1, self.losses[-1], x)
         missed = sum(not info["converged"] for info in self.prox_diagnostics)
         if missed:
             warnings.warn(f"{missed} proximal solves reached prox_iters before the gap tolerance; "
