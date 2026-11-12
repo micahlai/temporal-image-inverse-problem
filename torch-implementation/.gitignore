@@ -3,3 +3,4 @@
 /reconstructed/
 /results/*
 !/results/smol_noise_sweep
+!/results/smol_noise_sweep2

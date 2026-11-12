@@ -20,14 +20,15 @@ class InverseSolver:
 
     Input layout remains (H,W,C,T). NumPy arrays or tensors are accepted;
     output is a tensor on the chosen device. The entire video is optimized
-    jointly. Only the arithmetic backend and floating precision are configurable.
+    jointly. intensity_constraint=True restricts reconstructed intensities to
+    [0,1] inside optimization; the default preserves the original baseline.
     """
 
     def __init__(self, psf, algorithm="fista", num_iters=200, step_size=None,
                  lam_spatial=1e-3, lam_temporal=1e-3,
                  spatial_prior="wavelet", temporal_prior="tv",
                  wavelet="db4", wavelet_level=4, prox_iters=200, prox_tol=1e-5,
-                 *, device="auto", dtype="auto"):
+                 *, device="auto", dtype="auto", intensity_constraint=False):
         self.device = resolve_device(device)
         self.dtype = resolve_dtype(dtype, self.device)
         psf = torch.as_tensor(psf, device=self.device, dtype=self.dtype).detach()
@@ -50,8 +51,10 @@ class InverseSolver:
         self.step_size = 1.0 if step_size is None else step_size
         self.lam_spatial, self.lam_temporal = lam_spatial, lam_temporal
         self.spatial_prior, self.temporal_prior = spatial_prior, temporal_prior
+        self.intensity_constraint = intensity_constraint
         self.prox_options = dict(wavelet=wavelet, level=wavelet_level,
-                                 max_iters=prox_iters, tol=prox_tol)
+                                 max_iters=prox_iters, tol=prox_tol,
+                                 intensity_constraint=intensity_constraint)
         self._shape = None
         self.prox_diagnostics = []
 
@@ -113,6 +116,8 @@ class InverseSolver:
             base = v if self.algorithm == "fista" else x
             candidate = base - self.step_size * self._adjoint(self._forward(base) - y)
             new = candidate if self.algorithm == "gradient_descent" else self.prox(candidate)
+            if self.algorithm == "gradient_descent" and self.intensity_constraint:
+                new = new.clamp(0, 1)
             if self.algorithm == "fista":
                 next_momentum = (1 + math.sqrt(1 + 4 * momentum**2)) / 2
                 v = new + ((momentum - 1) / next_momentum) * (new - x)

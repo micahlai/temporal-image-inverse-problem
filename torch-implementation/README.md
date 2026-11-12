@@ -60,6 +60,10 @@ comparison in a separate output directory.
   `--wavelet-level`. CLI lambdas remain **base-10 exponents**; `-5` means `1e-5`.
 - `--all-priors true` runs wavelet/wavelet, wavelet/TV, TV/wavelet and TV/TV
   sequentially, saving the same log-loss versus linear-iteration comparison.
+- `--intensity-constraint true` restricts reconstructed intensities to `[0,1]`
+  during the joint proximal optimization. It defaults to false to preserve
+  existing experiments. Measurements, including negative noise, stay unchanged.
+  Metrics and iteration CSVs record whether the constraint was enabled.
 
 Both original preparation scripts' `.npz` datasets work directly. Keep using
 `og-cpu-implementation/prep.py` or `prep2.py` to generate data with the original
@@ -173,6 +177,72 @@ and `--wavelet-level`. `--num-iters` overrides 250 for shorter experiments.
 Ground truth is required for the sweep. Defaults are independent of your
 current working directory.
 
+## Fine TV/TV sweep with intensity constraint: 25 runs
+
+`sweep_weights2.py` enables the `[0,1]` intensity constraint and uses **TV for
+both spatial and temporal priors**. Each lambda independently takes the base-10
+exponents `-5.5, -5.25, -5, -4.75, -4.5`: 25 pairs, with **2,000 iterations**
+per pair (50,000 iteration rows). Every run starts from zero and uses the same
+stored `smol_noise` measurement and PSF. No dataset is regenerated.
+
+From the repository root:
+
+```sh
+conda run --no-capture-output -n temporal-torch python torch-implementation/sweep_weights2.py
+```
+
+Outputs are `sweep_iterations.csv` and `sweep_summary.csv` in
+`torch-implementation/results/smol_noise_sweep2/`. These include
+`intensity_constraint=True`, exponents, absolute lambda values, losses, PSNR,
+and proximal diagnostics. Runs execute sequentially and checkpoint after each
+completed run. Existing CSVs are protected from overwriting. Like the original
+sweep, this writes only CSVs. Use `--output-dir` for another run, or
+`--num-iters` for a shorter experiment. `sweep_weights.py` retains its original
+unconstrained four-prior sweep. The existing four-panel heatmap script is for
+that original sweep. Use the interactive viewer below for the TV-only grid.
+
+The box constraint is solved jointly with both priors, rather than clipping
+only the exported video. This applies to all four prior combinations through
+`main.py --intensity-constraint true`, and to the Python API through
+`InverseSolver(..., intensity_constraint=True)`. FISTA's extrapolated momentum
+can leave the interval; accepted reconstruction iterates stay in `[0,1]`.
+
+## Interactive sweep viewer
+
+Install the updated requirements in the `temporal-torch` environment (the
+viewer uses PySide6 for its Matplotlib Qt window):
+
+```sh
+python -m pip install -r torch-implementation/requirements.txt
+python torch-implementation/view_sweep.py
+```
+
+The default input is `results/smol_noise_sweep2/sweep_iterations.csv`, resolved
+relative to the script. The window shows a spatial-lambda versus temporal-lambda
+heatmap and the selected pair's full PSNR curve. Drag the iteration slider to
+update the heatmap; click a cell to change the curve. Peak, final, and selected
+iteration markers have exact scores underneath. Both plot axes for iteration
+and PSNR are linear. Lambda axis labels are base-10 exponents.
+
+The heatmap color scale stays fixed across all loaded iterations and pairs.
+The initial selection is the pair with the best final PSNR. Missing grid cells
+are gray; exact-match infinity is pink and labeled `∞` (shown above the finite
+range on the curve). Checkpoints from unfinished sweeps work: only completed
+runs are loaded, with axes based on their observed weights. Reopen the viewer
+to load newer checkpoints; it does not monitor or modify the running sweep.
+
+Use another history CSV or choose a prior pair from the original sweep:
+
+```sh
+python torch-implementation/view_sweep.py path/to/sweep_iterations.csv \
+  --spatial-prior wavelet --temporal-prior tv --iteration 250
+```
+
+The summary CSV lacks iteration histories and cannot drive the slider. For a
+static image without a GUI (also works without PySide6), add
+`--save path/to/snapshot.png`. The window's standard toolbar can also save the
+current view. PNGs do not retain the interactive controls.
+
 ## Plot the four heatmaps
 
 After the sweep completes:
@@ -199,7 +269,8 @@ iteration's PSNR, not the highest PSNR observed during a run.
 
 ## Preserved method
 
-The objective is unchanged:
+The default objective is unchanged; enabling the intensity constraint adds
+the restriction `0 <= x <= 1`:
 
 ```text
 0.5 * ||A(x) - measurement||²
@@ -221,7 +292,9 @@ The objective is unchanged:
 - The sum of both penalties is solved with the same accelerated projected dual
   iterations, operator-norm bounds, zero initialization, relative primal-dual
   gap check on every iteration, tolerance, and iteration cap. There is no
-  frame splitting, motion compensation, new positivity constraint, or warm start.
+  frame splitting, motion compensation, or warm start. With the optional box
+  constraint, primal recovery and dual-gradient evaluation project to `[0,1]`;
+  the same norm bound and primal-dual gap stopping rule remain valid.
 - FFTs, wavelet filtering/synthesis, TV differences, dual variables, and FISTA
   updates stay on the selected device. PyWavelets supplies only constant filter
   coefficients. NumPy handles file I/O and reports; scalar losses and gap checks

@@ -98,12 +98,13 @@ def _operators(shape, prior, axes, weight, wavelet, level):
 def joint_prox(x, lam_spatial, lam_temporal, step_size,
                spatial_prior="wavelet", temporal_prior="tv", *,
                wavelet="db4", level=4, max_iters=200, tol=1e-5,
-               return_info=False):
+               return_info=False, intensity_constraint=False):
     """Accelerated projected dual solve of the SUM of the two penalties.
 
-    Matches the CPU initialization, norm bounds, momentum and relative gap
-    stopping rule. No positivity constraint, temporal wrap for TV, channel
-    mixing, warm start, or change to the outer FISTA method is introduced.
+    With intensity_constraint, solve over 0 <= result <= 1. Projection is
+    part of the dual gradient and primal recovery, so the box and both priors
+    are optimized jointly. Measurements are never clipped. Otherwise matches
+    the original unconstrained CPU method.
     Returns a tensor on the input device, without an autograd graph.
     """
     x = as_video(x)
@@ -119,7 +120,8 @@ def joint_prox(x, lam_spatial, lam_temporal, step_size,
            + _operators(x.shape, temporal_prior, (3,), step_size * lam_temporal, wavelet, level))
     info = {"iterations": 0, "gap": 0.0, "converged": True}
     if not ops:
-        return (x.clone(), info) if return_info else x.clone()
+        result = x.clamp(0, 1) if intensity_constraint else x.clone()
+        return (result, info) if return_info else result
     dual = [torch.zeros_like(forward(x)) for forward, _, _, _ in ops]
     extrapolated = [p.clone() for p in dual]
     sigma = 1.0 / sum(bound for _, _, _, bound in ops)
@@ -128,11 +130,17 @@ def joint_prox(x, lam_spatial, lam_temporal, step_size,
         estimate = x.clone()
         for p, (_, adjoint, _, _) in zip(extrapolated, ops):
             estimate -= adjoint(p)
+        if intensity_constraint:
+            estimate.clamp_(0, 1)
         updated = [(q + sigma * forward(estimate)).clamp(-weight, weight)
                    for q, (forward, _, weight, _) in zip(extrapolated, ops)]
         result = x.clone()
         for p, (_, adjoint, _, _) in zip(updated, ops):
             result -= adjoint(p)
+        if intensity_constraint:
+            result.clamp_(0, 1)
+        # result minimizes the quadratic plus box indicator at this dual
+        # point. Their Fenchel gap is zero; only the prior gaps remain.
         gap, penalty = x.new_zeros(()), x.new_zeros(())
         for p, (forward, _, weight, _) in zip(updated, ops):
             coefficients = forward(result)

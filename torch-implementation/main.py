@@ -143,7 +143,8 @@ def run_reconstruction(args, measurement, psf, fps, reference,
                            spatial_prior=spatial_prior, temporal_prior=temporal_prior,
                            wavelet=args.wavelet, wavelet_level=args.wavelet_level,
                            prox_iters=args.prox_iters, prox_tol=args.prox_tol,
-                           device=args.device, dtype=args.dtype)
+                           device=args.device, dtype=args.dtype,
+                           intensity_constraint=getattr(args, "intensity_constraint", False))
     print(f"Device: {solver.device}; precision: {solver.dtype}", flush=True)
     # A small probe checks the operator without allocating another full video.
     lhs, rhs = adjoint_test(solver, measurement.shape[:2] + (1, 1))
@@ -180,6 +181,7 @@ def run_reconstruction(args, measurement, psf, fps, reference,
                   lambda_spatial=args.lambda_spatial, lambda_temporal=args.lambda_temporal,
                   iterations=args.num_iters, wavelet=args.wavelet, wavelet_level=args.wavelet_level,
                   prox_iters=args.prox_iters, prox_tol=args.prox_tol,
+                  intensity_constraint=solver.intensity_constraint,
                   device=str(solver.device), dtype=str(solver.dtype),
                   torch_version=torch.__version__,
                   ground_truth=args.ground_truth_source,
@@ -200,6 +202,7 @@ def run_reconstruction(args, measurement, psf, fps, reference,
         (output_dir / "metrics.json").write_text(json.dumps(report, indent=2) + "\n")
         print(f"Saved reconstruction: {output_dir / 'reconstructed.mp4'}")
     iterations = [dict(spatial_prior=spatial_prior, temporal_prior=temporal_prior,
+                       intensity_constraint=solver.intensity_constraint,
                        iteration=index, data_loss=loss,
                        lambda_spatial=args.lambda_spatial, lambda_temporal=args.lambda_temporal,
                        reconstructed_mse=quality_history[index - 1][0],
@@ -225,6 +228,9 @@ def main():
     parser.add_argument("--psf-scale", type=float, default=1.0,
                         help="For MP4 input: PSF pixel size relative to input video pixels")
     parser.add_argument("--spatial-prior", choices=("wavelet", "tv"), default="wavelet")
+    parser.add_argument("--intensity-constraint", type=boolean_argument, nargs="?", const=True,
+                        default=False, metavar="true|false",
+                        help="Constrain reconstruction to [0,1] during optimization (default: false)")
     parser.add_argument("--temporal-prior", choices=("wavelet", "tv"), default="tv")
     parser.add_argument("--all-priors", type=boolean_argument, nargs="?", const=True,
                         default=False, metavar="true|false",
